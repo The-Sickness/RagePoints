@@ -1,9 +1,11 @@
-## Interface: 10002
+## Interface: 10007
 ## Title: RagePoints
 ## Author: Sharpedge_Gaming 
-## Version: 1.00
-## Notes: Displays your rage points in a draggable (shift + click) frame. 
+## Version: 1.02 
+## SavedVariables: RagePoints_DisplayFormat
 
 
 RagePoints.xml
 RagePoints.lua
+RagePointsConfig.lua
+

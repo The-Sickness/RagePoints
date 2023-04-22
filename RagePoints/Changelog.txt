@@ -1,2 +1,9 @@
 10/27/22
 Version 1.0
+
+4/21/23
+Updated TO 10.0.7
+Added a new moveable frame
+Added Absolute (numerical)
+Added Percentage
+Added Combined (numerical/percentage

@@ -1,7 +1,55 @@
-﻿RagePoints_UpdateRate = 0.2;
+﻿
+
+RagePoints_UpdateRate = 0.2;
 RagePoints_Elapsed = 0;
 RagePoints_LastPower = -1;
 RagePoints_LastCombo = -1;
+
+local function CreateSimpleBorder(parent, edgeFile, edgeSize, inset)
+    local border = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    border:SetBackdrop({
+        edgeFile = edgeFile,
+        edgeSize = edgeSize,
+        insets = {left = inset, right = inset, top = inset, bottom = inset}
+    })
+    border:SetPoint("TOPLEFT", parent, "TOPLEFT", -inset, inset)
+    border:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", inset, -inset)
+    border:SetFrameLevel(parent:GetFrameLevel() + 1)
+    return border
+end
+
+local RagePoints = CreateFrame("Frame", "RagePoints", UIParent)
+RagePoints:SetSize(105, 30)
+RagePoints:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+
+RagePoints_Rage = RagePoints:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+RagePoints_Rage:SetPoint("CENTER", RagePoints, "CENTER", 0, 0)
+
+if RagePoints then
+    local border = CreateSimpleBorder(RagePoints, "Interface\\Tooltips\\UI-Tooltip-Border", 16, 4)
+else
+    print("RagePoints frame not found.")
+end
+
+-- Enable mouse events and make the frame movable
+RagePoints:EnableMouse(true)
+RagePoints:SetMovable(true)
+RagePoints:RegisterForDrag("LeftButton")
+
+-- Set the "OnMouseDown" and "OnMouseUp" event handlers
+RagePoints:SetScript("OnMouseDown", function(self, button)
+    if button == "LeftButton" then
+        self:StartMoving()
+    end
+end)
+
+RagePoints:SetScript("OnMouseUp", function(self, button)
+    if button == "LeftButton" then
+        self:StopMovingOrSizing()
+    end
+end)
+
+
 
 function RagePoints_EvtHandler(self, event, ...)
 	local unit;
@@ -24,10 +72,6 @@ function RagePoints_EvtHandler(self, event, ...)
 			RagePoints_Rage:SetText(UnitPowerMax("player") .. "");
 		end
 
-
-
-
-
 		RagePoints_LastPower = -1;
 		RagePoints_LastCombo = -1;
 		RagePoints_Update();
@@ -43,31 +87,50 @@ function RagePoints_OnUpdate(elapsed)
 	end
 end
 
+
 function RagePoints_Update()
-	if (UnitPower("player") ~= RagePoints_LastPower 
-		or GetComboPoints("player", "target") ~= RagePoints_LastCombo)
-	then
-		RagePoints_LastPower = UnitPower("player");
-		RagePoints_LastCombo = GetComboPoints("player", "target");
+    if (UnitPower("player") ~= RagePoints_LastPower or GetComboPoints("player", "target") ~= RagePoints_LastCombo) then
+        RagePoints_LastPower = UnitPower("player");
+        RagePoints_LastCombo = GetComboPoints("player", "target");
 
-		-- Mana (number / manaMax)
-		if UnitPowerType("player") == SPELL_POWER_MANA then
-			RagePoints_Rage:SetText(UnitPower("player") .." / ".. UnitPowerMax("player"));
+        local powerPercentage = (UnitPower("player") / UnitPowerMax("player")) * 100;
 
-		-- Energy (energy / combo)
-		elseif UnitPowerType("player") == SPELL_POWER_ENERGY then
-			RagePoints_Rage:SetText(UnitPower("player") .." / ".. GetComboPoints("player", "target"));
+        -- Mana (number / manaMax)
+        if UnitPowerType("player") == SPELL_POWER_MANA then
+            if RagePoints_DisplayFormat == "Percentage" then
+                RagePoints_Rage:SetText(string.format("%.1f", powerPercentage) .. "%");
+            elseif RagePoints_DisplayFormat == "Combined" then
+                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. UnitPowerMax("player") .. " (" .. string.format("%.1f", powerPercentage) .. "%)");
+            else
+                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. UnitPowerMax("player"));
+            end
 
-		-- Rage/Focus (number)
-		else
-			RagePoints_Rage:SetText(UnitPower("player"));
-		end
+        -- Energy (energy / combo)
+        elseif UnitPowerType("player") == SPELL_POWER_ENERGY then
+            if RagePoints_DisplayFormat == "Percentage" then
+                RagePoints_Rage:SetText(string.format("%.1f", powerPercentage) .. "% / " .. GetComboPoints("player", "target"));
+            elseif RagePoints_DisplayFormat == "Combined" then
+                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. GetComboPoints("player", "target") .. " (" .. string.format("%.1f", powerPercentage) .. "%)");
+            else
+                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. GetComboPoints("player", "target"));
+            end
 
-		local r, g, b = RagePoints_SetManaColor();
+        -- Rage/Focus (number)
+        else
+            if RagePoints_DisplayFormat == "Percentage" then
+                RagePoints_Rage:SetText(string.format("%.1f", powerPercentage) .. "%");
+            elseif RagePoints_DisplayFormat == "Combined" then
+                RagePoints_Rage:SetText(UnitPower("player") .. " (" .. string.format("%.1f", powerPercentage) .. "%)");
+            else
+                RagePoints_Rage:SetText(UnitPower("player"));
+            end
+        end
 
-		RagePoints_Rage:SetTextColor(r, g, b);
-	end
+        local r, g, b = RagePoints_SetManaColor();
+        RagePoints_Rage:SetTextColor(r, g, b);
+    end
 end
+
 
 function RagePoints_SetManaColor()
 	local mana = UnitPower("player") / UnitPowerMax("player");
