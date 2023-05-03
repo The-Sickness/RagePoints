@@ -1,0 +1,11 @@
+## Interface: 100100
+## Title: RagePoints
+## Author: Sharpedge_Gaming 
+## Version: 1.02 
+## SavedVariables: RagePoints_DisplayFormat
+
+
+
+RagePoints.lua
+RagePointsConfig.lua
+
