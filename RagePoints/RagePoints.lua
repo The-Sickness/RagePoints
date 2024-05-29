@@ -1,176 +1,187 @@
-﻿
+﻿-- Embed Ace3 libraries
+local AceAddon = LibStub("AceAddon-3.0"):NewAddon("RagePoints", "AceConsole-3.0", "AceEvent-3.0", "AceHook-3.0", "AceTimer-3.0")
+local AceDB = LibStub("AceDB-3.0")
+local AceConfig = LibStub("AceConfig-3.0")
+local AceConfigDialog = LibStub("AceConfigDialog-3.0")
+local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
 
-RagePoints_UpdateRate = 0.2;
-RagePoints_Elapsed = 0;
-RagePoints_LastPower = -1;
-RagePoints_LastCombo = -1;
+-- Default settings
+local defaults = {
+    profile = {
+        position = {
+            point = "CENTER",
+            relativeTo = nil,
+            relativePoint = "CENTER",
+            xOfs = 0,
+            yOfs = 0
+        },
+        width = 200,
+        height = 20,
+        color = {r = 1, g = 0, b = 0, a = 1},
+        displayFormat = "Absolute"
+    }
+}
 
-local function CreateSimpleBorder(parent, edgeFile, edgeSize, inset)
-    local border = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    border:SetBackdrop({
-        edgeFile = edgeFile,
-        edgeSize = edgeSize,
-        insets = {left = inset, right = inset, top = inset, bottom = inset}
-    })
-    border:SetPoint("TOPLEFT", parent, "TOPLEFT", -inset, inset)
-    border:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", inset, -inset)
-    border:SetFrameLevel(parent:GetFrameLevel() + 1)
-    return border
-end
+-- Initialize the database
+AceAddon.db = AceDB:New("RagePointsDB", defaults, true)
 
-local RagePoints = CreateFrame("Frame", "RagePoints", UIParent)
-RagePoints:SetSize(105, 30)
-RagePoints:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-
-RagePoints_Rage = RagePoints:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-RagePoints_Rage:SetPoint("CENTER", RagePoints, "CENTER", 0, 0)
-
-if RagePoints then
-    local border = CreateSimpleBorder(RagePoints, "Interface\\Tooltips\\UI-Tooltip-Border", 16, 4)
-else
-    print("RagePoints frame not found.")
-end
-
--- Enable mouse events and make the frame movable
-RagePoints:EnableMouse(true)
+-- Create the frame
+local RagePoints = CreateFrame("Frame", "RagePointsFrame", UIParent)
+RagePoints:SetSize(AceAddon.db.profile.width, AceAddon.db.profile.height)
+RagePoints:SetPoint(AceAddon.db.profile.position.point, UIParent, AceAddon.db.profile.position.relativePoint, AceAddon.db.profile.position.xOfs, AceAddon.db.profile.position.yOfs)
 RagePoints:SetMovable(true)
+RagePoints:EnableMouse(true)
 RagePoints:RegisterForDrag("LeftButton")
-
--- Set the "OnMouseDown" and "OnMouseUp" event handlers
-RagePoints:SetScript("OnMouseDown", function(self, button)
-    if button == "LeftButton" then
-        self:StartMoving()
-    end
+RagePoints:SetScript("OnDragStart", RagePoints.StartMoving)
+RagePoints:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
+    AceAddon.db.profile.position = {point = point, relativeTo = relativeTo, relativePoint = relativePoint, xOfs = xOfs, yOfs = yOfs}
 end)
 
-RagePoints:SetScript("OnMouseUp", function(self, button)
-    if button == "LeftButton" then
-        self:StopMovingOrSizing()
+-- Create the status bar
+local RageBar = CreateFrame("StatusBar", nil, RagePoints)
+RageBar:SetAllPoints(RagePoints)
+RageBar:SetStatusBarTexture("Interface\\TARGETINGFRAME\\UI-StatusBar")
+RageBar:GetStatusBarTexture():SetHorizTile(false)
+RageBar:SetMinMaxValues(0, UnitPowerMax("player", SPELL_POWER_RAGE))
+RageBar:SetValue(UnitPower("player", SPELL_POWER_RAGE))
+
+-- Create a font string for the bar
+local RageBarText = RageBar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+RageBarText:SetPoint("CENTER", RageBar, "CENTER")
+RageBarText:SetText(UnitPower("player", SPELL_POWER_RAGE))
+
+-- Update the bar and text
+local function UpdateRageBar()
+    local rage = UnitPower("player", SPELL_POWER_RAGE)
+    local maxRage = UnitPowerMax("player", SPELL_POWER_RAGE)
+    local format = AceAddon.db.profile.displayFormat
+
+    RageBar:SetMinMaxValues(0, maxRage)
+    RageBar:SetValue(rage)
+    if format == "Percentage" then
+        RageBarText:SetText(string.format("%.1f%%", (rage / maxRage) * 100))
+    elseif format == "Combined" then
+        RageBarText:SetText(string.format("%d / %d (%.1f%%)", rage, maxRage, (rage / maxRage) * 100))
+    else
+        RageBarText:SetText(string.format("%d / %d", rage, maxRage))
+    end
+end
+
+-- Register events
+RagePoints:RegisterEvent("UNIT_POWER_UPDATE")
+RagePoints:RegisterEvent("PLAYER_ENTERING_WORLD")
+RagePoints:SetScript("OnEvent", UpdateRageBar)
+
+-- Configuration table
+local options = {
+    name = "RagePoints",
+    handler = AceAddon,
+    type = 'group',
+    args = {
+        general = {
+            type = 'group',
+            name = "General Settings",
+            args = {
+                width = {
+                    type = 'range',
+                    name = "Bar Width",
+                    min = 100,
+                    max = 400,
+                    step = 1,
+                    get = function() return AceAddon.db.profile.width end,
+                    set = function(_, val) 
+                        AceAddon.db.profile.width = val
+                        RagePoints:SetWidth(val)
+                    end
+                },
+                height = {
+                    type = 'range',
+                    name = "Bar Height",
+                    min = 10,
+                    max = 40,
+                    step = 1,
+                    get = function() return AceAddon.db.profile.height end,
+                    set = function(_, val) 
+                        AceAddon.db.profile.height = val
+                        RagePoints:SetHeight(val)
+                    end
+                },
+                color = {
+                    type = 'color',
+                    name = "Bar Color",
+                    get = function() 
+                        local c = AceAddon.db.profile.color 
+                        return c.r, c.g, c.b, c.a 
+                    end,
+                    set = function(_, r, g, b, a) 
+                        local c = AceAddon.db.profile.color
+                        c.r, c.g, c.b, c.a = r, g, b, a
+                        RageBar:SetStatusBarColor(r, g, b, a)
+                    end
+                },
+                displayFormat = {
+                    type = 'select',
+                    name = "Display Format",
+                    values = {
+                        Absolute = "Absolute",
+                        Percentage = "Percentage",
+                        Combined = "Combined",
+                    },
+                    get = function() return AceAddon.db.profile.displayFormat end,
+                    set = function(_, val) 
+                        AceAddon.db.profile.displayFormat = val
+                        RagePoints_DisplayFormat = val
+                        UpdateRageBar()
+                    end,
+                },
+            }
+        }
+    }
+}
+
+-- Register options
+AceConfig:RegisterOptionsTable("RagePoints", options)
+AceConfigDialog:AddToBlizOptions("RagePoints", "RagePoints")
+
+-- Initialize settings
+RageBar:SetStatusBarColor(AceAddon.db.profile.color.r, AceAddon.db.profile.color.g, AceAddon.db.profile.color.b, AceAddon.db.profile.color.a)
+
+-- Create the options panel frame for Interface Options
+local optionsPanel = CreateFrame("Frame", "RagePointsOptionsPanel", UIParent)
+optionsPanel.name = "RagePoints"
+InterfaceOptions_AddCategory(optionsPanel)
+
+optionsPanel.title = optionsPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+optionsPanel.title:SetPoint("TOPLEFT", 16, -16)
+optionsPanel.title:SetText("RagePoints")
+
+optionsPanel.instructions = optionsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+optionsPanel.instructions:SetPoint("TOPLEFT", optionsPanel.title, "BOTTOMLEFT", 0, -8)
+optionsPanel.instructions:SetWidth(300)
+optionsPanel.instructions:SetJustifyH("LEFT")
+optionsPanel.instructions:SetText("Here you can configure RagePoints to your liking.")
+
+-- Adding AceConfigDialog container to our panel
+local AceContainer = AceConfigDialog:AddToBlizOptions("RagePoints", "RagePoints", nil)
+AceContainer:SetParent(optionsPanel)
+AceContainer:ClearAllPoints()
+AceContainer:SetPoint("TOPLEFT", optionsPanel.instructions, "BOTTOMLEFT", -16, -16)
+AceContainer:SetPoint("BOTTOMRIGHT", optionsPanel, "BOTTOMRIGHT", -16, 16)
+
+local function RagePoints_On_AddonLoaded()
+    -- Load saved variables
+    RagePoints_DisplayFormat = AceAddon.db.profile.displayFormat
+
+    -- Set the selected display format in the dropdown menu
+    AceConfigRegistry:NotifyChange("RagePoints")
+end
+
+optionsPanel:RegisterEvent("ADDON_LOADED")
+optionsPanel:SetScript("OnEvent", function(self, event, addonName)
+    if event == "ADDON_LOADED" and addonName == "RagePoints" then
+        RagePoints_On_AddonLoaded()
+        optionsPanel:UnregisterEvent("ADDON_LOADED")
     end
 end)
-
-
-
-function RagePoints_EvtHandler(self, event, ...)
-	local unit;
-
-	if event == "UNIT_MAXPOWER" or event == "UNIT_DISPLAYPOWER" then
-		unit = ...;
-	end
-
-	if unit == "player" or event == "PLAYER_ENTERING_WORLD" then
-		-- Mana (current/max)
-		if UnitPowerType("player") == SPELL_POWER_MANA then
-			RagePoints_Rage:SetText(UnitPowerMax("player") .." / ".. UnitPowerMax("player"));
-
-		-- Energy (energy/combo)
-		elseif UnitPowerType("player") == SPELL_POWER_ENERGY then
-			RagePoints_Rage:SetText(UnitPowerMax("player") .." / ".. MAX_COMBO_POINTS);
-
-		-- Rage/Focus (number)
-		else
-			RagePoints_Rage:SetText(UnitPowerMax("player") .. "");
-		end
-
-		RagePoints_LastPower = -1;
-		RagePoints_LastCombo = -1;
-		RagePoints_Update();
-	end
-end
-
-function RagePoints_OnUpdate(elapsed)
-	RagePoints_Elapsed = RagePoints_Elapsed + elapsed;
-
-	if (RagePoints_Elapsed > RagePoints_UpdateRate) then
-		RagePoints_Update();
-		RagePoints_Elapsed = 0;
-	end
-end
-
-
-function RagePoints_Update()
-    if (UnitPower("player") ~= RagePoints_LastPower or GetComboPoints("player", "target") ~= RagePoints_LastCombo) then
-        RagePoints_LastPower = UnitPower("player");
-        RagePoints_LastCombo = GetComboPoints("player", "target");
-
-        local powerPercentage = (UnitPower("player") / UnitPowerMax("player")) * 100;
-
-        -- Mana (number / manaMax)
-        if UnitPowerType("player") == SPELL_POWER_MANA then
-            if RagePoints_DisplayFormat == "Percentage" then
-                RagePoints_Rage:SetText(string.format("%.1f", powerPercentage) .. "%");
-            elseif RagePoints_DisplayFormat == "Combined" then
-                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. UnitPowerMax("player") .. " (" .. string.format("%.1f", powerPercentage) .. "%)");
-            else
-                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. UnitPowerMax("player"));
-            end
-
-        -- Energy (energy / combo)
-        elseif UnitPowerType("player") == SPELL_POWER_ENERGY then
-            if RagePoints_DisplayFormat == "Percentage" then
-                RagePoints_Rage:SetText(string.format("%.1f", powerPercentage) .. "% / " .. GetComboPoints("player", "target"));
-            elseif RagePoints_DisplayFormat == "Combined" then
-                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. GetComboPoints("player", "target") .. " (" .. string.format("%.1f", powerPercentage) .. "%)");
-            else
-                RagePoints_Rage:SetText(UnitPower("player") .. " / " .. GetComboPoints("player", "target"));
-            end
-
-        -- Rage/Focus (number)
-        else
-            if RagePoints_DisplayFormat == "Percentage" then
-                RagePoints_Rage:SetText(string.format("%.1f", powerPercentage) .. "%");
-            elseif RagePoints_DisplayFormat == "Combined" then
-                RagePoints_Rage:SetText(UnitPower("player") .. " (" .. string.format("%.1f", powerPercentage) .. "%)");
-            else
-                RagePoints_Rage:SetText(UnitPower("player"));
-            end
-        end
-
-        local r, g, b = RagePoints_SetManaColor();
-        RagePoints_Rage:SetTextColor(r, g, b);
-    end
-end
-
-
-function RagePoints_SetManaColor()
-	local mana = UnitPower("player") / UnitPowerMax("player");
-	local r = 0;
-	local g = 0;
-	local b = 0;
-
-	-- white
-	if (mana >= 1) then
-		r = 1;
-		g = 1;
-		b = 1;
-
-    -- blue (for mana) or..
-    elseif (mana >= 0.8 and UnitPowerType("player") == SPELL_POWER_MANA) then
-		b = 1;
-
-    -- .. red
-    elseif (mana >= 0.8 and UnitPowerType("player") ~= SPELL_POWER_MANA) then
-		r = 1; 
-
-	-- green
-	elseif (mana >= 0.6) then
-		g = 1;
-
-	-- red for low mana
-	elseif (mana < 0.2 and UnitPowerType("player") == SPELL_POWER_MANA) then
-		r = 1;
-
-	-- dirty yellow
-	elseif (mana > 0) then
-		r = 0.75;
-		g = 0.75;
-
-	-- gray
-	else
-		r = 0.5;
-		g = 0.5;
-		b = 0.5;
-	end
-
-	return r, g, b;
-end
